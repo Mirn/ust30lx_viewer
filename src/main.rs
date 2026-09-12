@@ -5,6 +5,8 @@ use std::sync::{Arc, Mutex};
 use std::thread;
 use std::time::{Duration, Instant};
 
+use std::fs::File;
+
 const DEFAULT_ADDR: &str = "192.168.0.10:10940";
 const MD_COMMAND: &str = "MD0000108001000\n";
 
@@ -42,19 +44,27 @@ impl Default for SharedState {
 }
 
 struct ScipReader {
+    wr_file: File,
+    file_rx: File,
     stream: TcpStream,
     buf: Vec<u8>,
 }
 
 impl ScipReader {
     fn new(stream: TcpStream) -> Self {
+        let mut wr_file = File::create("wr_stream.bin").unwrap();
+        let mut file_rx = File::create("stream_rx.bin").unwrap();
         Self {
+            wr_file,
+            file_rx,
             stream,
             buf: Vec::with_capacity(8192),
         }
     }
 
     fn send(&mut self, text: &str) -> io::Result<()> {
+        self.wr_file.write(text.as_bytes())?;
+        let _ = self.wr_file.flush();
         self.stream.write_all(text.as_bytes())?;
         self.stream.flush()
     }
@@ -75,6 +85,8 @@ impl ScipReader {
 
             let mut tmp = [0u8; 4096];
             let n = self.stream.read(&mut tmp)?;
+            self.file_rx.write(&tmp)?;
+            let _ = self.file_rx.flush();
             if n == 0 {
                 return Err(io::Error::new(
                     io::ErrorKind::UnexpectedEof,
